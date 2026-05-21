@@ -1,193 +1,74 @@
-/**
- * LoginPage.tsx — Unified login page
- *
- * All users (CRM, Trading, Admin) log in through this single page.
- * After successful login, the user is redirected based on their domain:
- *   CRM    → /crm/dashboard
- *   TRADING → /trade/dashboard
- *   BOTH   → /admin/dashboard
- */
-
-import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { LoginForm, MfaForm } from '../../components/auth/LoginForm.js';
-import {
-  login,
-  verifyMfa,
-  refreshAccessToken,
-} from '../../lib/auth/authClient.js';
-import { getRedirectForDomain } from '../../lib/rbac/roles.js';
-import type { AuthUser, Domain } from '../../types/auth.types.js';
-
-// -------------------------------------------------------
-// Types
-// -------------------------------------------------------
-
-type PageState =
-  | { step: 'login' }
-  | { step: 'mfa'; mfaSessionToken: string }
-  | { step: 'done' };
-
-// -------------------------------------------------------
-// LoginPage component
-// -------------------------------------------------------
+import React from 'react';
 
 export default function LoginPage() {
-  const navigate = useNavigate();
-  const location = useLocation();
-
-  const [state, setState] = useState<PageState>({ step: 'login' });
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // -------------------------------------------------------
-  // On mount: try to restore session via refresh cookie
-  // -------------------------------------------------------
-  useEffect(() => {
-    let cancelled = false;
-
-    async function tryRestore() {
-      try {
-        const token = await refreshAccessToken();
-        if (!cancelled && token) {
-          // Decode domain from JWT payload (base64 middle section)
-          const payload = JSON.parse(atob(token.split('.')[1]!));
-          const domain = payload.domain as Domain;
-          const redirectTo = (location.state as any)?.from ?? getRedirectForDomain(domain);
-          navigate(redirectTo, { replace: true });
-        }
-      } catch {
-        // No valid refresh token — stay on login page
-      }
-    }
-
-    tryRestore();
-    return () => { cancelled = true; };
-  }, [navigate, location.state]);
-
-  // -------------------------------------------------------
-  // Handlers
-  // -------------------------------------------------------
-
-  const handleLogin = async (email: string, password: string) => {
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const result = await login({ email, password });
-
-      if ('mfaRequired' in result) {
-        setState({ step: 'mfa', mfaSessionToken: result.mfaSessionToken });
-        return;
-      }
-
-      // Store user in window for ProtectedRoute (replace with real auth context)
-      (window as any).__AUTH_USER__ = result.user;
-
-      redirectAfterLogin(result.user);
-    } catch (err: unknown) {
-      setError(getErrorMessage(err));
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleMfaVerify = async (totpCode: string) => {
-    if (state.step !== 'mfa') return;
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const result = await verifyMfa({
-        mfaSessionToken: state.mfaSessionToken,
-        totpCode,
-      });
-      (window as any).__AUTH_USER__ = result.user;
-      redirectAfterLogin(result.user);
-    } catch (err: unknown) {
-      setError(getErrorMessage(err));
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const redirectAfterLogin = (user: AuthUser) => {
-    const from = (location.state as any)?.from;
-    const defaultRedirect = getRedirectForDomain(user.domain);
-    navigate(from ?? defaultRedirect, { replace: true });
-  };
-
-  // -------------------------------------------------------
-  // Render
-  // -------------------------------------------------------
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        {/* Card */}
-        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8">
-          {/* Logo / Brand */}
-          <div className="text-center mb-8 flex flex-col items-center">
-            <img 
-              src="/logo.png" 
-              alt="Bullenhaus Logo" 
-              className="w-24 h-24 object-contain mb-4"
-              onError={(e) => {
-                // Fallback if image not found
-                (e.target as HTMLImageElement).style.display = 'none';
-                document.getElementById('logo-fallback-global')!.style.display = 'flex';
-              }}
-            />
-            <div id="logo-fallback-global" className="hidden items-center justify-center w-12 h-12 rounded-xl bg-blue-600 text-white font-bold text-xl mb-4">
-              B
-            </div>
-            <h1 className="text-2xl font-bold text-gray-900">Bullenhaus</h1>
-            <p className="text-sm text-gray-500 mt-1">
-              {state.step === 'mfa' ? 'Two-factor verification' : 'Sign in to your account'}
-            </p>
+    <div className="min-h-screen bg-gradient-to-br from-[#0a0a0b] to-[#121214] flex flex-col items-center justify-center p-4">
+      {/* Background Glows */}
+      <div className="absolute top-0 right-0 w-[50%] h-[50%] bg-[#d4af37] blur-[150px] opacity-10 pointer-events-none" />
+      <div className="absolute bottom-0 left-0 w-[50%] h-[50%] bg-[#0a84ff] blur-[150px] opacity-10 pointer-events-none" />
+
+      {/* Logo */}
+      <div className="z-10 flex flex-col items-center mb-12">
+        <img 
+          src="/logo.png" 
+          alt="Bullenhaus" 
+          className="w-32 h-32 object-contain mb-6 drop-shadow-2xl"
+          onError={(e) => (e.target as HTMLImageElement).style.display = 'none'}
+        />
+        <h1 className="text-4xl font-serif text-white tracking-widest uppercase">Bullenhaus</h1>
+        <p className="text-sm text-gray-400 tracking-[0.2em] mt-2">GLOBAL FINANCIAL PLATFORM</p>
+      </div>
+
+      {/* Portals */}
+      <div className="z-10 grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-4xl">
+        
+        {/* Trading Portal */}
+        <div className="bg-[#1a1a1e] border border-white/5 p-8 rounded-2xl shadow-2xl hover:border-[#d4af37]/50 transition-all group flex flex-col items-center text-center">
+          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#d4af37]/20 to-transparent flex items-center justify-center mb-6 border border-[#d4af37]/30 group-hover:scale-110 transition-transform">
+            <svg className="w-8 h-8 text-[#d4af37]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+            </svg>
           </div>
-
-          {/* Form */}
-          {state.step === 'login' && (
-            <LoginForm
-              onSubmit={handleLogin}
-              isLoading={isLoading}
-              error={error}
-            />
-          )}
-
-          {state.step === 'mfa' && (
-            <MfaForm
-              onSubmit={handleMfaVerify}
-              onCancel={() => {
-                setState({ step: 'login' });
-                setError(null);
-              }}
-              isLoading={isLoading}
-              error={error}
-            />
-          )}
+          <h2 className="text-2xl font-bold text-white mb-2 tracking-wide">Trading Terminal</h2>
+          <p className="text-gray-400 mb-8 text-sm">Exclusive access for registered clients and elite traders.</p>
+          
+          <div className="flex flex-col w-full gap-3 mt-auto">
+            <a 
+              href="/trade/auth/login" 
+              className="w-full py-3 bg-[#d4af37] text-black font-bold tracking-widest uppercase text-sm rounded hover:bg-[#c19b2e] transition-colors"
+            >
+              Sign In
+            </a>
+            <a 
+              href="/trade/auth/register" 
+              className="w-full py-3 bg-transparent border border-white/10 text-white font-bold tracking-widest uppercase text-sm rounded hover:bg-white/5 transition-colors"
+            >
+              Register as Client
+            </a>
+          </div>
         </div>
 
-        {/* Footer note */}
-        <p className="text-center text-xs text-gray-400 mt-6">
-          Your session is protected with end-to-end encryption.
-        </p>
+        {/* CRM Portal */}
+        <div className="bg-[#1a1a1e] border border-white/5 p-8 rounded-2xl shadow-2xl hover:border-[#0a84ff]/50 transition-all group flex flex-col items-center text-center">
+          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#0a84ff]/20 to-transparent flex items-center justify-center mb-6 border border-[#0a84ff]/30 group-hover:scale-110 transition-transform">
+            <svg className="w-8 h-8 text-[#0a84ff]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+          </div>
+          <h2 className="text-2xl font-bold text-white mb-2 tracking-wide">Corporate CRM</h2>
+          <p className="text-gray-400 mb-8 text-sm">Internal portal for managers, agents, and administrators.</p>
+          
+          <div className="flex flex-col w-full gap-3 mt-auto">
+            <a 
+              href="/crm" 
+              className="w-full py-3 bg-[#0a84ff] text-white font-bold tracking-widest uppercase text-sm rounded hover:bg-[#0070e0] transition-colors"
+            >
+              Employee Login
+            </a>
+          </div>
+        </div>
+
       </div>
     </div>
   );
-}
-
-// -------------------------------------------------------
-// Error message extractor
-// -------------------------------------------------------
-
-function getErrorMessage(err: unknown): string {
-  if (err instanceof Error) {
-    const status = (err as any).status ?? (err as any).statusCode;
-    if (status === 429) return 'Account temporarily locked. Please try again later.';
-    if (status === 403) return 'Account suspended. Contact support.';
-    return err.message || 'Login failed. Please try again.';
-  }
-  return 'An unexpected error occurred.';
 }

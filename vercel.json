@@ -11,6 +11,8 @@
 
   "rewrites": [
     { "source": "/api/(.*)", "destination": "https://api.bullenhaus.ailegal.dev/api/$1" },
+    { "source": "/crm/(.*)", "destination": "/crm.html" },
+    { "source": "/trade/(.*)", "destination": "/trade.html" },
     { "source": "/(.*)",     "destination": "/index.html" }
   ],
 

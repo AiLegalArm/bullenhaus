@@ -49,7 +49,16 @@ export function Login({ onLogin }: { onLogin: (role: string) => void }) {
       >
         {/* Logo */}
         <div className="flex flex-col items-center text-center mb-8">
-          <div className="h-12 w-12 rounded bg-gradient-to-br from-[#121214] to-[#0A0A0B] border border-aura-gold/30 flex items-center justify-center mb-6 shadow-inner">
+          <img 
+            src="/logo.png" 
+            alt="Bullenhaus Logo" 
+            className="w-24 h-24 object-contain mb-4"
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = 'none';
+              document.getElementById('crm-login-fallback')!.style.display = 'flex';
+            }}
+          />
+          <div id="crm-login-fallback" className="hidden h-12 w-12 rounded bg-gradient-to-br from-[#121214] to-[#0A0A0B] border border-aura-gold/30 items-center justify-center mb-6 shadow-inner">
             <Building2 className="w-6 h-6 text-aura-gold" />
           </div>
           <h1 className="font-serif text-3xl font-light italic tracking-tight text-aura-platinum mb-2">

@@ -127,8 +127,18 @@ export default function LoginPage() {
         {/* Card */}
         <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8">
           {/* Logo / Brand */}
-          <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-blue-600 text-white font-bold text-xl mb-4">
+          <div className="text-center mb-8 flex flex-col items-center">
+            <img 
+              src="/logo.png" 
+              alt="Bullenhaus Logo" 
+              className="w-24 h-24 object-contain mb-4"
+              onError={(e) => {
+                // Fallback if image not found
+                (e.target as HTMLImageElement).style.display = 'none';
+                document.getElementById('logo-fallback-global')!.style.display = 'flex';
+              }}
+            />
+            <div id="logo-fallback-global" className="hidden items-center justify-center w-12 h-12 rounded-xl bg-blue-600 text-white font-bold text-xl mb-4">
               B
             </div>
             <h1 className="text-2xl font-bold text-gray-900">Bullenhaus</h1>

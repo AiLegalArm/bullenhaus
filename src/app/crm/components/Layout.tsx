@@ -102,8 +102,19 @@ export function Layout({ children, role, onLogout }: { children: ReactNode, role
     <>
       <div className="flex h-20 items-center px-8 shrink-0 justify-between">
         <div className="flex items-center gap-3">
-          <div className="h-8 w-1 bg-aura-gold shadow-[0_0_10px_rgba(212,175,55,0.4)]"></div>
-          <span className="text-xs font-bold tracking-[0.3em] text-aura-gold">AURA</span>
+          <img 
+            src="/logo.png" 
+            alt="Bullenhaus Logo" 
+            className="h-10 w-auto object-contain"
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = 'none';
+              document.getElementById('crm-logo-fallback')!.style.display = 'flex';
+            }}
+          />
+          <div id="crm-logo-fallback" className="hidden items-center gap-3">
+            <div className="h-8 w-1 bg-aura-gold shadow-[0_0_10px_rgba(212,175,55,0.4)]"></div>
+            <span className="text-xs font-bold tracking-[0.3em] text-aura-gold">BULLENHAUS</span>
+          </div>
         </div>
         <button className="md:hidden" onClick={() => setMobileMenuOpen(false)}>
           <X className="w-5 h-5 text-aura-platinum/50" />

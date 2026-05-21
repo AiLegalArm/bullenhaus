@@ -220,7 +220,7 @@ model TradingAccount {
   user            User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // Link to CRM client (optional)
-  crmClientId     String?
+  crmClientId     String?    @unique
   client          Client?    @relation(fields: [crmClientId], references: [id])
 
   // Legacy Trade-V2 link

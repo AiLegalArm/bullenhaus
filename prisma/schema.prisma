@@ -1,0 +1,363 @@
+// prisma/schema.prisma — Unified Bullenhaus schema
+//
+// Extends the Aura CRM Prisma schema with:
+//   - systemRole and domain columns on User
+//   - TradingAccount table
+//   - WorkerJob table for background processing
+//   - DenylistedToken table for JWT revocation (Redis fallback)
+//
+// Existing CRM tables (Client, Lead, Call, etc.) are preserved as-is.
+// Migration is ADDITIVE — no DROP or DELETE.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// -------------------------------------------------------
+// Enums
+// -------------------------------------------------------
+
+enum SystemRole {
+  SUPER_ADMIN
+  CRM_ADMIN
+  CRM_DIRECTOR
+  CRM_MANAGER
+  CRM_AGENT
+  TRADING_OPERATOR
+  TRADER
+}
+
+enum Domain {
+  CRM
+  TRADING
+  BOTH
+}
+
+enum EntityStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum KycStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum SyncEventStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+enum WorkerJobStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+// -------------------------------------------------------
+// Core: User (extended for unified system)
+// -------------------------------------------------------
+
+model User {
+  id                  String       @id @default(uuid())
+  email               String       @unique
+  passwordHash        String
+  firstName           String
+  lastName            String
+  phone               String?
+  avatarUrl           String?
+
+  // Unified role system
+  systemRole          SystemRole   @default(CRM_AGENT)
+  domain              Domain       @default(CRM)
+
+  // Status
+  status              EntityStatus @default(ACTIVE)
+
+  // Auth
+  emailVerified       Boolean      @default(false)
+  lastLoginAt         DateTime?
+  failedLoginAttempts Int          @default(0)
+  lockedUntil         DateTime?
+
+  // MFA
+  mfaEnabled          Boolean      @default(false)
+  mfaSecret           String?
+
+  // Trading link (for migrated/linked users)
+  tradingExternalId   String?      @unique
+  tradingAccountId    String?
+
+  // Timestamps
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  // Relations
+  userRoles           UserRole[]
+  sessions            Session[]
+  refreshTokens       RefreshToken[]
+  tradingAccount      TradingAccount?
+  auditLogs           AuditLog[]
+  teamMemberships     TeamMember[]
+  assignedClients     Client[]     @relation("AgentClients")
+  assignedLeads       Lead[]       @relation("AgentLeads")
+  workerJobs          WorkerJob[]  @relation("JobCreatedBy")
+
+  @@index([email])
+  @@index([systemRole, domain])
+  @@map("User")
+}
+
+// -------------------------------------------------------
+// RBAC
+// -------------------------------------------------------
+
+model Role {
+  id              String           @id @default(uuid())
+  name            SystemRole       @unique
+  description     String?
+  userRoles       UserRole[]
+  rolePermissions RolePermission[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@map("Role")
+}
+
+model Permission {
+  id              String           @id @default(uuid())
+  name            String           @unique  // e.g. "crm.clients.view_all"
+  description     String?
+  rolePermissions RolePermission[]
+  createdAt       DateTime         @default(now())
+
+  @@map("Permission")
+}
+
+model UserRole {
+  id        String   @id @default(uuid())
+  userId    String
+  roleId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, roleId])
+  @@map("UserRole")
+}
+
+model RolePermission {
+  id           String     @id @default(uuid())
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@unique([roleId, permissionId])
+  @@map("RolePermission")
+}
+
+// -------------------------------------------------------
+// Auth: Sessions and Tokens
+// -------------------------------------------------------
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  @@index([userId])
+  @@map("Session")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  family    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("RefreshToken")
+}
+
+model DenylistedToken {
+  id        String   @id @default(uuid())
+  jti       String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
+  @@map("DenylistedToken")
+}
+
+// -------------------------------------------------------
+// Trading Domain
+// -------------------------------------------------------
+
+model TradingAccount {
+  id              String     @id @default(uuid())
+  userId          String     @unique
+  user            User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Link to CRM client (optional)
+  crmClientId     String?
+  client          Client?    @relation(fields: [crmClientId], references: [id])
+
+  // Legacy Trade-V2 link
+  supabaseAuthId  String?    @unique
+
+  kycStatus       KycStatus  @default(UNVERIFIED)
+  balance         Decimal    @default(0) @db.Decimal(19, 4)
+  marginUsed      Decimal    @default(0) @db.Decimal(19, 4)
+  currency        String     @default("USD")
+  isActive        Boolean    @default(true)
+
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@index([userId])
+  @@map("TradingAccount")
+}
+
+// -------------------------------------------------------
+// CRM Domain (existing tables — abbreviated key models)
+// -------------------------------------------------------
+
+model Client {
+  id              String         @id @default(uuid())
+  assignedAgentId String?
+  assignedAgent   User?          @relation("AgentClients", fields: [assignedAgentId], references: [id])
+  email           String?
+  firstName       String
+  lastName        String
+  phone           String?
+  status          EntityStatus   @default(ACTIVE)
+  kycStatus       KycStatus      @default(UNVERIFIED)
+  tradingAccount  TradingAccount?
+  leads           Lead[]
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([assignedAgentId])
+  @@map("Client")
+}
+
+model Lead {
+  id              String       @id @default(uuid())
+  assignedAgentId String?
+  assignedAgent   User?        @relation("AgentLeads", fields: [assignedAgentId], references: [id])
+  clientId        String?
+  client          Client?      @relation(fields: [clientId], references: [id])
+  email           String?
+  firstName       String
+  lastName        String
+  status          EntityStatus @default(ACTIVE)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([assignedAgentId])
+  @@map("Lead")
+}
+
+model Team {
+  id        String       @id @default(uuid())
+  name      String
+  members   TeamMember[]
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@map("Team")
+}
+
+model TeamMember {
+  id        String   @id @default(uuid())
+  teamId    String
+  userId    String
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([teamId, userId])
+  @@map("TeamMember")
+}
+
+// -------------------------------------------------------
+// Audit Log (immutable — no UPDATE or DELETE via RLS)
+// -------------------------------------------------------
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  action     String
+  entityType String
+  entityId   String?
+  metadata   String?  // JSON string
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("AuditLog")
+}
+
+// -------------------------------------------------------
+// Worker / Sync
+// -------------------------------------------------------
+
+model WorkerJob {
+  id              String          @id @default(uuid())
+  eventType       String
+  payload         String          // JSON string
+  idempotencyKey  String          @unique
+  status          WorkerJobStatus @default(PENDING)
+  attempts        Int             @default(0)
+  maxRetries      Int             @default(3)
+  lastError       String?
+  createdById     String?
+  createdBy       User?           @relation("JobCreatedBy", fields: [createdById], references: [id])
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([status, createdAt])
+  @@index([idempotencyKey])
+  @@map("WorkerJob")
+}
+
+model SyncEventsLog {
+  id             String          @id @default(uuid())
+  eventId        String          @unique
+  eventType      String
+  status         SyncEventStatus @default(PENDING)
+  payload        String          // JSON string
+  responseData   String?         // JSON string
+  retryCount     Int             @default(0)
+  processedAt    DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([status])
+  @@index([eventType])
+  @@map("SyncEventsLog")
+}

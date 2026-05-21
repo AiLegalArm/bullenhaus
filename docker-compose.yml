@@ -1,0 +1,63 @@
+# docker-compose.yml — Local development stack
+# Provides Postgres + Redis for running Bullenhaus locally
+# without needing a full Supabase project for dev work.
+#
+# Usage:
+#   docker compose up -d        # start
+#   docker compose down         # stop
+#   docker compose down -v      # stop + wipe volumes
+#
+# After starting:
+#   DATABASE_URL=postgresql://postgres:postgres@localhost:5432/bullenhaus_dev
+#   DIRECT_URL=postgresql://postgres:postgres@localhost:5432/bullenhaus_dev
+#   REDIS_URL=redis://localhost:6379
+
+services:
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: bullenhaus_dev
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis (JWT denylist + session cache) ────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Adminer (lightweight DB UI for local dev) ───────────────────────────────
+  adminer:
+    image: adminer:latest
+    restart: unless-stopped
+    ports:
+      - '8080:8080'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles:
+      - tools   # opt-in: docker compose --profile tools up -d
+
+volumes:
+  postgres_data:
+  redis_data:

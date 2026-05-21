@@ -89,8 +89,8 @@ function signAccessToken(
   const jti = randomUUID();
   const token = jwt.sign(
     { sub: userId, jti, systemRole, domain } as Partial<JwtAccessPayload>,
-    JWT_ACCESS_SECRET,
-    { expiresIn: JWT_ACCESS_EXPIRES_IN }
+    JWT_ACCESS_SECRET as string,
+    { expiresIn: JWT_ACCESS_EXPIRES_IN as any }
   );
   return { token, jti };
 }
@@ -102,8 +102,8 @@ function signRefreshToken(
   const jti = randomUUID();
   const token = jwt.sign(
     { sub: userId, jti, family } as Partial<JwtRefreshPayload>,
-    JWT_REFRESH_SECRET,
-    { expiresIn: JWT_REFRESH_EXPIRES_IN }
+    JWT_REFRESH_SECRET as string,
+    { expiresIn: JWT_REFRESH_EXPIRES_IN as any }
   );
   return { token, jti };
 }
@@ -241,7 +241,7 @@ export async function login(
   if ((user as any).mfaEnabled) {
     const mfaSessionToken = jwt.sign(
       { sub: user.id, mfaSession: true },
-      JWT_ACCESS_SECRET,
+      JWT_ACCESS_SECRET as string,
       { expiresIn: '5m' }
     );
     await writeAuditLog(user.id, 'LOGIN_MFA_REQUIRED', { ip: ipAddress });
@@ -258,7 +258,7 @@ export async function login(
 export async function verifyMfa(payload: MfaVerifyRequest): Promise<LoginResult> {
   let decoded: { sub: string; mfaSession?: boolean };
   try {
-    decoded = jwt.verify(payload.mfaSessionToken, JWT_ACCESS_SECRET) as typeof decoded;
+    decoded = jwt.verify(payload.mfaSessionToken, JWT_ACCESS_SECRET as string) as typeof decoded;
   } catch {
     throw Object.assign(new Error('MFA session token invalid or expired'), { status: 401 });
   }
@@ -359,7 +359,7 @@ async function issueTokens(user: any, ipAddress?: string): Promise<LoginResult> 
 export async function refreshTokens(refreshToken: string): Promise<string> {
   let decoded: JwtRefreshPayload;
   try {
-    decoded = jwt.verify(refreshToken, JWT_REFRESH_SECRET) as JwtRefreshPayload;
+    decoded = jwt.verify(refreshToken, JWT_REFRESH_SECRET as string) as JwtRefreshPayload;
   } catch {
     throw Object.assign(new Error('Refresh token invalid or expired'), { status: 401 });
   }
